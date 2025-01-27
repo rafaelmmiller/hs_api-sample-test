@@ -4,8 +4,7 @@ const _ = require('lodash');
 
 const { filterNullValuesFromObject, goal } = require('./utils');
 const Domain = require('./Domain');
-
-const hubspotClient = new hubspot.Client({ accessToken: '' });
+const { getHubspotClient } = require('./services/hubspot');
 const propertyPrefix = 'hubspot__';
 let expirationDate;
 
@@ -38,6 +37,8 @@ const refreshAccessToken = async (domain, hubId, tryCount) => {
   const account = domain.integrations.hubspot.accounts.find(account => account.hubId === hubId);
   const { accessToken, refreshToken } = account;
 
+  const hubspotClient = getHubspotClient();
+
   return hubspotClient.oauth.tokensApi
     .createToken('refresh_token', undefined, undefined, HUBSPOT_CID, HUBSPOT_CS, refreshToken)
     .then(async result => {
@@ -59,6 +60,8 @@ const refreshAccessToken = async (domain, hubId, tryCount) => {
  * Get recently modified companies as 100 companies per page
  */
 const processCompanies = async (domain, hubId, q) => {
+  const hubspotClient = getHubspotClient();
+
   const account = domain.integrations.hubspot.accounts.find(account => account.hubId === hubId);
   const lastPulledDate = new Date(account.lastPulledDates.companies);
   const now = new Date();
@@ -150,6 +153,8 @@ const processCompanies = async (domain, hubId, q) => {
  * Get recently modified contacts as 100 contacts per page
  */
 const processContacts = async (domain, hubId, q) => {
+  const hubspotClient = getHubspotClient();
+
   const account = domain.integrations.hubspot.accounts.find(account => account.hubId === hubId);
   const lastPulledDate = new Date(account.lastPulledDates.contacts);
   const now = new Date();
@@ -266,6 +271,7 @@ const processContacts = async (domain, hubId, q) => {
  * Get recently modified meetings
  */
 const processMeetings = async (domain, hubId, q) => {
+  const hubspotClient = getHubspotClient();
   const account = domain.integrations.hubspot.accounts.find(account => account.hubId === hubId);
   
   // workaround to get the lastPulledDate for meetings. Doesn't have a get() method.
