@@ -26,8 +26,14 @@ const saveDomain = async domain => {
   // disable this for testing purposes
   return;
 
-  domain.markModified('integrations.hubspot.accounts');
-  await domain.save();
+  try {
+    domain.markModified('integrations.hubspot.accounts');
+    await domain.save();
+  } catch (err) {
+    error('Failed to save domain', { error: err });
+    // Re-throw to allow caller to handle
+    throw err;
+  }
 };
 
 /**
@@ -217,11 +223,18 @@ const processContacts = async (domain, hubId, q) => {
 
     // contact to company association
     const contactsToAssociate = contactIds;
-    const companyAssociationsResults = (await (await hubspotClient.apiRequest({
-      method: 'post',
-      path: '/crm/v3/associations/CONTACTS/COMPANIES/batch/read',
-      body: { inputs: contactsToAssociate.map(contactId => ({ id: contactId })) }
-    })).json())?.results || [];
+    let companyAssociationsResults = [];
+    try {
+      const response = await hubspotClient.apiRequest({
+        method: 'post',
+        path: '/crm/v3/associations/CONTACTS/COMPANIES/batch/read',
+        body: { inputs: contactsToAssociate.map(contactId => ({ id: contactId })) }
+      });
+      companyAssociationsResults = (await response.json())?.results || [];
+    } catch (err) {
+      error('Failed to fetch company associations', { hubId, error: err });
+      companyAssociationsResults = [];
+    }
 
     const companyAssociations = Object.fromEntries(companyAssociationsResults.map(a => {
       if (a.from) {
@@ -339,11 +352,18 @@ const processMeetings = async (domain, hubId, q) => {
 
     // contact to meeting association
     const meetingsToAssociate = meetingIds;
-    const contactAssociationsResults = (await (await hubspotClient.apiRequest({
-      method: 'post',
-      path: '/crm/v3/associations/MEETINGS/CONTACTS/batch/read',
-      body: { inputs: meetingsToAssociate.map(meetingId => ({ id: meetingId })) }
-    })).json())?.results || [];
+    let contactAssociationsResults = [];
+    try {
+      const response = await hubspotClient.apiRequest({
+        method: 'post',
+        path: '/crm/v3/associations/MEETINGS/CONTACTS/batch/read',
+        body: { inputs: meetingsToAssociate.map(meetingId => ({ id: meetingId })) }
+      });
+      contactAssociationsResults = (await response.json())?.results || [];
+    } catch (err) {
+      error('Failed to fetch meeting associations', { hubId, error: err });
+      contactAssociationsResults = [];
+    }
     const contactAssociations = Object.fromEntries(contactAssociationsResults.map(a => {
       if (a.from) {
         meetingsToAssociate.splice(meetingsToAssociate.indexOf(a.from.id), 1);
@@ -352,8 +372,13 @@ const processMeetings = async (domain, hubId, q) => {
     }).filter(x => x));
     // get contact emails
     const contactEmails = await Promise.all(Object.values(contactAssociations).map(async contactId => {
-      const contact = await hubspotClient.crm.contacts.basicApi.getById(contactId, ['email'])
-      return { id: contactId, email: contact.properties.email };
+      try {
+        const contact = await hubspotClient.crm.contacts.basicApi.getById(contactId, ['email']);
+        return { id: contactId, email: contact.properties.email };
+      } catch (err) {
+        error('Failed to fetch contact email', { hubId, contactId, error: err });
+        return { id: contactId, email: null };
+      }
     }));
 
     const contactEmailMap = Object.fromEntries(contactEmails.map(contact => [contact.id, contact.email]));
