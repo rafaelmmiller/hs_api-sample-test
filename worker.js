@@ -5,6 +5,7 @@ const _ = require('lodash');
 const { filterNullValuesFromObject, goal } = require('./utils');
 const Domain = require('./Domain');
 const { getHubspotClient } = require('./services/hubspot');
+const { error, warn, info, debug } = require('./logger');
 const propertyPrefix = 'hubspot__';
 let expirationDate;
 
@@ -51,6 +52,8 @@ const refreshAccessToken = async (domain, hubId, tryCount) => {
       if (newAccessToken !== accessToken) {
         account.accessToken = newAccessToken;
       }
+
+      info('Access token refreshed', { hubId, newAccessToken });
 
       return true;
     });
@@ -102,6 +105,8 @@ const processCompanies = async (domain, hubId, q) => {
 
         if (new Date() > expirationDate) await refreshAccessToken(domain, hubId);
 
+        warn(`Retrying to fetch companies, attempt ${tryCount}`, { hubId, error: err });
+
         await new Promise((resolve, reject) => setTimeout(resolve, 5000 * Math.pow(2, tryCount)));
       }
     }
@@ -111,7 +116,7 @@ const processCompanies = async (domain, hubId, q) => {
     const data = searchResult?.results || [];
     offsetObject.after = parseInt(searchResult?.paging?.next?.after);
 
-    console.log('fetch company batch');
+    info('Fetched company batch', { hubId, batchSize: data.length });
 
     data.forEach(company => {
       if (!company.properties) return;
@@ -195,6 +200,8 @@ const processContacts = async (domain, hubId, q) => {
 
         if (new Date() > expirationDate) await refreshAccessToken(domain, hubId);
 
+        warn(`Retrying to fetch contacts, attempt ${tryCount}`, { hubId, error: err });
+
         await new Promise((resolve, reject) => setTimeout(resolve, 5000 * Math.pow(2, tryCount)));
       }
     }
@@ -203,7 +210,7 @@ const processContacts = async (domain, hubId, q) => {
 
     const data = searchResult.results || [];
 
-    console.log('fetch contact batch');
+    info('Fetched contact batch', { hubId, batchSize: data.length });
 
     offsetObject.after = parseInt(searchResult.paging?.next?.after);
     const contactIds = data.map(contact => contact.id);
@@ -313,6 +320,8 @@ const processMeetings = async (domain, hubId, q) => {
           await refreshAccessToken(domain, hubId);
         }
 
+        warn(`Retrying to fetch meetings, attempt ${tryCount}`, { hubId, error: err });
+
         await new Promise((resolve, reject) => setTimeout(resolve, 5000 * Math.pow(2, tryCount)));
       }
     }
@@ -323,7 +332,7 @@ const processMeetings = async (domain, hubId, q) => {
 
     const data = searchResult.results || [];
 
-    console.log('fetch meeting batch');
+    info('Fetched meeting batch', { hubId, batchSize: data.length });
 
     offsetObject.after = parseInt(searchResult.paging?.next?.after);
     const meetingIds = data.map(meeting => meeting.id);
@@ -398,7 +407,7 @@ const createQueue = (domain, actions) => queue(async (action, callback) => {
   actions.push(action);
 
   if (actions.length > 2000) {
-    console.log('inserting actions to database', { apiKey: domain.apiKey, count: actions.length });
+    info('Inserting actions to database', { apiKey: domain.apiKey, count: actions.length });
 
     const copyOfActions = _.cloneDeep(actions);
     actions.splice(0, actions.length);
@@ -413,6 +422,7 @@ const drainQueue = async (domain, actions, q) => {
   if (q.length() > 0) await q.drain();
 
   if (actions.length > 0) {
+    info('Draining remaining actions to database', { apiKey: domain.apiKey, count: actions.length });
     goal(actions)
   }
 
@@ -420,20 +430,20 @@ const drainQueue = async (domain, actions, q) => {
 };
 
 const pullDataFromHubspot = async () => {
-  console.log('start pulling data from HubSpot');
+  info('Start pulling data from HubSpot');
 
   const domain = await Domain.findOne({});
 
   for (const account of domain.integrations.hubspot.accounts) {
-    console.log('start processing account');
+    info('Start processing account', { hubId: account.hubId });
 
     try {
       await refreshAccessToken(domain, account.hubId);
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'refreshAccessToken' } });
+      error(err, { apiKey: domain.apiKey, metadata: { operation: 'refreshAccessToken' } });
     }
 
-    console.log('refreshed access token');
+    info('Refreshed access token', { hubId: account.hubId });
 
     const actions = [];
     const q = createQueue(domain, actions);
@@ -441,36 +451,36 @@ const pullDataFromHubspot = async () => {
     // commented out for testing purposes
     // try {
     //   await processContacts(domain, account.hubId, q);
-    //   console.log('process contacts');
+    //   info('Processed contacts', { hubId: account.hubId });
     // } catch (err) {
-    //   console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processContacts', hubId: account.hubId } });
+    //   error(err, { apiKey: domain.apiKey, metadata: { operation: 'processContacts', hubId: account.hubId } });
     // }
 
     // commented out for testing purposes
     // try {
     //   await processCompanies(domain, account.hubId, q);
-    //   console.log('process companies');
+    //   info('Processed companies', { hubId: account.hubId });
     // } catch (err) {
-    //   console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processCompanies', hubId: account.hubId } });
+    //   error(err, { apiKey: domain.apiKey, metadata: { operation: 'processCompanies', hubId: account.hubId } });
     // }
 
     try {
       await processMeetings(domain, account.hubId, q);
-      console.log('process meetings');
+      info('Processed meetings', { hubId: account.hubId });
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processMeetings', hubId: account.hubId } });
+      error(err, { apiKey: domain.apiKey, metadata: { operation: 'processMeetings', hubId: account.hubId } });
     }
 
     try {
       await drainQueue(domain, actions, q);
-      console.log('drain queue');
+      info('Drained queue', { hubId: account.hubId });
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'drainQueue', hubId: account.hubId } });
+      error(err, { apiKey: domain.apiKey, metadata: { operation: 'drainQueue', hubId: account.hubId } });
     }
 
     await saveDomain(domain);
 
-    console.log('finish processing account');
+    info('Finished processing account', { hubId: account.hubId });
   }
 
   process.exit();
