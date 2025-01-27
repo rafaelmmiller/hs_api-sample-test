@@ -1,8 +1,14 @@
+const hubspot = require('@hubspot/api-client');
+
 let hubspotClientInstance;
 
-export const getHubspotClient = () => {
+const getHubspotClient = (accessToken) => {
   if (!hubspotClientInstance) {
-    hubspotClientInstance = new hubspot.Client({ accessToken: '' });
+    hubspotClientInstance = new hubspot.Client({ accessToken: accessToken ?? '' });
   }
   return hubspotClientInstance;
+};
+
+module.exports = {
+  getHubspotClient
 };

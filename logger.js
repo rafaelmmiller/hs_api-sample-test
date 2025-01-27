@@ -7,7 +7,7 @@ const levels = {
 
 let currentLevel = levels[process.env.LOG_LEVEL] !== undefined ? levels[process.env.LOG_LEVEL] : levels.INFO;
 
-export const setLogLevel = (level) => {
+const setLogLevel = (level) => {
   if (levels[level] !== undefined) {
     currentLevel = levels[level];
   } else {
@@ -22,7 +22,15 @@ const log = (level, message, ...args) => {
   }
 };
 
-export const error = (message, ...args) => log('ERROR', message, ...args);
-export const warn = (message, ...args) => log('WARN', message, ...args);
-export const info = (message, ...args) => log('INFO', message, ...args);
-export const debug = (message, ...args) => log('DEBUG', message, ...args);
+const error = (message, ...args) => log('ERROR', message, ...args);
+const warn = (message, ...args) => log('WARN', message, ...args);
+const info = (message, ...args) => log('INFO', message, ...args);
+const debug = (message, ...args) => log('DEBUG', message, ...args);
+
+module.exports = {
+  setLogLevel,
+  error,
+  warn,
+  info,
+  debug
+};
