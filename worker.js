@@ -2,25 +2,12 @@ const hubspot = require('@hubspot/api-client');
 const { queue } = require('async');
 const _ = require('lodash');
 
-const { filterNullValuesFromObject, goal } = require('./utils');
+const { filterNullValuesFromObject, goal, generateLastModifiedDateFilter } = require('./utils');
 const Domain = require('./Domain');
 const { getHubspotClient } = require('./services/hubspot');
 const { error, warn, info, debug } = require('./logger');
 const propertyPrefix = 'hubspot__';
 let expirationDate;
-
-const generateLastModifiedDateFilter = (date, nowDate, propertyName = 'hs_lastmodifieddate') => {
-  const lastModifiedDateFilter = date ?
-    {
-      filters: [
-        { propertyName, operator: 'GTQ', value: `${date.valueOf()}` },
-        { propertyName, operator: 'LTQ', value: `${nowDate.valueOf()}` }
-      ]
-    } :
-    {};
-
-  return lastModifiedDateFilter;
-};
 
 const saveDomain = async domain => {
   // disable this for testing purposes
